@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🗂️ Carteira Digital</title>
+<style>
+  html, body { height:100%; margin:0; }
+  body { font-family: Arial, sans-serif; background: #f5f5f5; display:flex; flex-direction:column; align-items:center; padding:5vw; min-width:320px; }
+  h1,h2 { text-align:center; margin-bottom:3vh; font-size:6vw; }
+  .form-container, .profile-card, .doc-container { background:#fff; padding:5vw; border-radius:3vw; box-shadow:0 0.5vw 1.5vw rgba(0,0,0,.2); margin-bottom:5vh; width:95%; max-width:95vw; display:flex; flex-direction:column; align-items:center; }
+  .form-container input, .form-container select, .form-container button, .doc-btn, .toggle-btn, .reset-btn { width:100%; margin:2vw 0; padding:3vw; border:1px solid #ccc; border-radius:1.5vw; font-size:4vw; cursor:pointer;}
+  .profile-card p { margin:2vw 0; font-size:4vw; }
+  .profile-pic, .doc-img { width:30vw; height:30vw; object-fit:cover; border-radius:50%; margin-bottom:3vw; border:0.8vw solid #007bff; display:block; cursor:pointer; }
+  .doc-img { border-radius:1.5vw; width:100%; height:auto; margin:2vw 0; cursor:pointer; }
+  .doc-btn { background:#28a745; color:white; border:none; text-align:center; }
+  .doc-input { display:none; }
+  .doc-container { display:flex; justify-content:center; flex-wrap:wrap; margin-bottom:2vh; flex-direction:column; }
+  .hidden { display:none; }
+  .toggle-btn, .reset-btn { border:none; border-radius:1.5vw; font-size:4vw; margin:2vw; min-width:30vw; width:auto; text-align:center; }
+  .toggle-btn { background:#007bff; color:white; }
+  .reset-btn { background:#dc3545; color:white; }
+  .overlay { position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.9); display:flex; justify-content:center; align-items:center; z-index:999; }
+  .overlay img { max-width:95%; max-height:95%; border-radius:3vw; }
+  footer { width:100%; background:black; color:white; text-align:center; padding:0,5vw; margin-top:auto; position:relative; font-size:3vw; }
+  #footerLetreiro { font-family:"Arial Black", sans-serif; font-size:2vw; white-space:nowrap; overflow:hidden; display:inline-block; }
+</style>
+</head>
+<body>
+
+<!-- Modal Senha Inicial / Autenticação -->
+<div id="authModal" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000000cc; display:flex; flex-direction:column; justify-content:center; align-items:center; z-index:9999;">
+  <h2 id="authTitle" style="color:white; margin-bottom:2vw;"></h2>
+  <input type="password" id="masterPassword" placeholder="🔒 Digite a Senha" style="padding:3vw; font-size:4vw; border-radius:1.5vw; margin-bottom:2vw;">
+  <input type="text" id="passwordHint" placeholder="💡 Palavra-chave (lembrete)" style="padding:3vw; font-size:4vw; border-radius:1.5vw; margin-bottom:2vw; display:none;">
+  <button id="passwordBtn" style="padding:3vw; font-size:4vw; border-radius:1.5vw; margin-bottom:2vw;"></button>
+  <button id="hintBtn" style="padding:2vw; font-size:3.5vw; border-radius:1.5vw; background:#ffc107; color:black; display:none;">Exibir Lembrete</button>
+</div>
+
+<h1 id="title"></h1>
+
+<button class="toggle-btn" onclick="toggleFormulario()">Novo Perfil</button>
+<button class="reset-btn" onclick="resetarTudo()">Resetar Tudo</button>
+
+<div class="form-container hidden" id="formulario">
+  <input type="file" id="foto" accept="image/*">
+  <input type="text" id="nome" placeholder="Nome Completo">
+  <select id="sangue">
+    <option value="">Tipo Sanguíneo</option>
+    <option value="A+">A+</option><option value="A-">A-</option>
+    <option value="B+">B+</option><option value="B-">B-</option>
+    <option value="AB+">AB+</option><option value="AB-">AB-</option>
+    <option value="O+">O+</option><option value="O-">O-</option>
+  </select>
+  <input type="text" id="endereco" placeholder="Endereço Completo">
+  <input type="email" id="email" placeholder="Email">
+  <input type="tel" id="telefone" placeholder="Telefone/Celular">
+  <button onclick="inserirPerfil()">Inserir Perfil</button>
+</div>
+
+<div id="perfil" class="profile-card hidden">
+  <img id="perfilFoto" class="profile-pic" src="" alt="Foto de Perfil">
+  <h2 id="perfilNome"></h2>
+  <p><strong>Tipo Sanguíneo:</strong> <span id="perfilSangue"></span></p>
+  <p><strong>Endereço:</strong> <span id="perfilEndereco"></span></p>
+  <p><strong>Email:</strong> <span id="perfilEmail"></span></p>
+  <p><strong>Telefone:</strong> <span id="perfilTelefone"></span></p>
+</div>
+
+<h2>Guia de Documentos</h2>
+<div id="documentos">
+  <button class="doc-btn" onclick="document.getElementById('inputDocs').click()">📄 Carregar Arquivos</button>
+  <input type="file" id="inputDocs" accept="image/*" multiple class="doc-input">
+</div>
+<div id="docContainer" class="doc-container"></div>
+<button class="reset-btn" onclick="resetDocs()">Resetar Documentos</button>
+
+<footer><span id="footerLetreiro"></span></footer>
+
+<script>
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+let cryptoKey;
+const SALT_KEY = "userSalt";
+
+// ======= FUNÇÕES DE SEGURANÇA =======
+function generateSalt(length=16){
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function getCryptoKey(password, salt){
+  const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    {name:"PBKDF2", salt:enc.encode(salt), iterations:200000, hash:"SHA-256"},
+    keyMaterial,
+    {name:"AES-GCM", length:256},
+    true,
+    ["encrypt","decrypt"]
+  );
+}
+
+async function setMasterPasswordKey(password){
+  let salt = localStorage.getItem(SALT_KEY);
+  if(!salt){
+    salt = generateSalt();
+    localStorage.setItem(SALT_KEY, salt);
+  }
+  cryptoKey = await getCryptoKey(password, salt);
+}
+
+async function encryptData(data){
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = enc.encode(data);
+  const cipher = await crypto.subtle.encrypt({name:"AES-GCM", iv}, cryptoKey, encoded);
+  return Array.from(iv).join(",")+":"+Array.from(new Uint8Array(cipher)).join(",");
+}
+
+async function decryptData(cipherText){
+  const [ivStr,dataStr] = cipherText.split(":");
+  const iv = Uint8Array.from(ivStr.split(","),x=>parseInt(x));
+  const buffer = Uint8Array.from(dataStr.split(","),x=>parseInt(x));
+  const decrypted = await crypto.subtle.decrypt({name:"AES-GCM", iv}, cryptoKey, buffer);
+  return dec.decode(decrypted);
+}
+
+// ======= AUTENTICAÇÃO =======
+const authTitle = document.getElementById('authTitle');
+const passwordBtn = document.getElementById('passwordBtn');
+const hintBtn = document.getElementById('hintBtn');
+const passwordHintInput = document.getElementById('passwordHint');
+const authModal = document.getElementById('authModal');
+
+let isFirstTime = !localStorage.getItem("senhaEncrypted");
+
+if(isFirstTime){
+  authTitle.innerText = "Cadastrar Nova Senha";
+  passwordBtn.innerText = "Salvar Senha";
+  passwordHintInput.style.display = "block";
+  passwordBtn.onclick = async ()=>{
+    const senha = document.getElementById('masterPassword').value.trim();
+    const hint = passwordHintInput.value.trim();
+    if(!senha){ alert("Digite uma senha!"); return; }
+    if(!hint){ alert("Digite uma palavra-chave de lembrete!"); return; }
+    await setMasterPasswordKey(senha);
+    const encrypted = await encryptData(senha);
+    localStorage.setItem("senhaEncrypted", encrypted);
+    localStorage.setItem("lembrete", hint);
+    authModal.style.display="none";
+    carregarDados();
+  };
+}else{
+  authTitle.innerText = "Autenticação Necessária";
+  passwordBtn.innerText = "Entrar";
+  hintBtn.style.display = "block";
+  passwordBtn.onclick = async ()=>{
+    const input = document.getElementById('masterPassword').value;
+    try{
+      await setMasterPasswordKey(input);
+      const decrypted = await decryptData(localStorage.getItem("senhaEncrypted"));
+      if(input === decrypted){
+        authModal.style.display="none";
+        carregarDados();
+      }else{ alert("Senha incorreta!"); }
+    }catch(e){ alert("Senha incorreta!"); }
+  };
+  hintBtn.onclick = ()=>{
+    const hint = localStorage.getItem("lembrete") || "Nenhum lembrete cadastrado.";
+    alert("💡 Lembrete: " + hint);
+  };
+}
+
+// ======= RESETAR =======
+function resetarTudo(){
+  localStorage.clear();
+  alert("Tudo foi apagado. Reabra o arquivo para cadastrar uma nova senha.");
+  location.reload();
+}
+
+// ======= RESTANTE DO CÓDIGO (TÍTULO, LETREIRO, PERFIL, DOCUMENTOS) =======
+const MAX_DOCS=30;
+// Título animado
+const titleEl=document.getElementById('title');
+const letreiroTexts=[
+  ()=>"💼 Carteira Digital",
+  ()=>`📅 Data: ${new Date().toLocaleDateString()}`,
+  ()=>{const now=new Date();return `🕗 Hora: ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`},
+  ()=>`😎 Dia: ${new Date().toLocaleDateString('pt-BR',{weekday:'long'})}`
+];
+let currentIndex=0;
+function typeWriter(el,text,i=0){ if(i<text.length){ el.innerHTML=text.substring(0,i+1); setTimeout(()=>typeWriter(el,text,i+1),50);} }
+function startLetreiro(){ typeWriter(titleEl,letreiroTexts[currentIndex]()); currentIndex=(currentIndex+1)%letreiroTexts.length; setTimeout(startLetreiro,15000); }
+startLetreiro();
+
+// Rodapé
+const footerEl=document.getElementById('footerLetreiro');
+function startFooterLetreiro(){ typeWriter(footerEl,"🛡️ Desenvolvido por: EDCELL TECH"); setTimeout(startFooterLetreiro,20000); }
+startFooterLetreiro();
+
+// Compressão imagem
+function reduzirImagem(file,maxWidth=800,quality=0.75){return new Promise(resolve=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height;if(w>maxWidth){h=h*(maxWidth/w);w=maxWidth;}const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;canvas.getContext("2d").drawImage(img,0,0,w,h);resolve(canvas.toDataURL("image/jpeg",quality));};img.src=e.target.result;};reader.readAsDataURL(file);});}
+
+// Salvar imagem
+async function salvarImagem(nome,dataURL){
+  const container=document.getElementById("docContainer");
+  let imagensEnc=JSON.parse(localStorage.getItem('imagens')||"[]");
+  const encryptedData=await encryptData(dataURL);
+  imagensEnc.push({nome,dataURL:encryptedData});
+  localStorage.setItem('imagens',JSON.stringify(imagensEnc));
+  criarBotaoVisualizar(container,nome,dataURL);
+}
+async function criarBotaoVisualizar(container,nome,dataURL){
+  const wrapper=document.createElement("div");
+  wrapper.style.display="flex";wrapper.style.flexDirection="column";wrapper.style.alignItems="center";wrapper.style.marginBottom="10px";
+  const toggleBtn=document.createElement("button");toggleBtn.className="toggle-btn";toggleBtn.innerText="Visualizar "+nome;
+  const img=document.createElement("img");img.src=dataURL;img.className="doc-img hidden";
+  toggleBtn.onclick=()=>{img.classList.toggle("hidden");toggleBtn.innerText=(img.classList.contains("hidden")?"Visualizar ":"Ocultar ")+nome;};
+  img.onclick=()=>{const overlay=document.createElement("div");overlay.className="overlay";const imgFull=document.createElement("img");imgFull.src=dataURL;overlay.appendChild(imgFull);overlay.onclick=()=>overlay.remove();document.body.appendChild(overlay);};
+  wrapper.appendChild(toggleBtn);wrapper.appendChild(img);container.appendChild(wrapper);
+}
+document.getElementById('inputDocs').addEventListener('change',async e=>{
+  const files=Array.from(e.target.files);e.target.value="";
+  for(let file of files){
+    if(document.getElementById('docContainer').children.length>=MAX_DOCS){alert("Máximo de 30 imagens atingido.");break;}
+    const dataURL=await reduzirImagem(file);
+    salvarImagem(file.name.replace(/\.[^/.]+$/,""),dataURL);
+  }
+});
+
+// Perfil
+function toggleFormulario(){document.getElementById('formulario').classList.toggle('hidden');}
+async function inserirPerfil(){
+  const fotoInput=document.getElementById('foto');
+  const nome=document.getElementById('nome').value.trim();
+  const sangue=document.getElementById('sangue').value;
+  const endereco=document.getElementById('endereco').value.trim();
+  const email=document.getElementById('email').value.trim();
+  const telefone=document.getElementById('telefone').value.trim();
+  if(!nome||!sangue||!endereco||!email||!telefone){alert("Preencha todos os campos!");return;}
+  let dataURL="";
+  if(fotoInput.files&&fotoInput.files[0]){
+    dataURL=await reduzirImagem(fotoInput.files[0]);
+    document.getElementById('perfilFoto').src=dataURL;
+    const encryptedData=await encryptData(dataURL);
+    localStorage.setItem('foto',encryptedData);
+  }
+  for(let id of ['nome','sangue','endereco','email','telefone']){
+    const value=document.getElementById(id).value.trim();
+    localStorage.setItem(id,await encryptData(value));
+  }
+  document.getElementById('perfilNome').innerText=nome;
+  document.getElementById('perfilSangue').innerText=sangue;
+  document.getElementById('perfilEndereco').innerText=endereco;
+  document.getElementById('perfilEmail').innerText=email;
+  document.getElementById('perfilTelefone').innerText=telefone;
+  document.getElementById('perfil').classList.remove('hidden'); 
+  document.getElementById('formulario').classList.add('hidden');
+}
+function resetDocs(){document.getElementById("docContainer").innerHTML="";localStorage.removeItem('imagens');}
+
+// Carregar dados
+async function carregarDados(){
+  const encKeys=['nome','sangue','endereco','email','telefone','foto'];
+  let hasProfileData=false;
+  for(let key of encKeys){
+    const val=localStorage.getItem(key);
+    if(val){try{const decrypted=await decryptData(val);
+      if(key==='nome'){document.getElementById('perfilNome').innerText=decrypted;hasProfileData=true;}
+      else if(key==='sangue')document.getElementById('perfilSangue').innerText=decrypted;
+      else if(key==='endereco')document.getElementById('perfilEndereco').innerText=decrypted;
+      else if(key==='email')document.getElementById('perfilEmail').innerText=decrypted;
+      else if(key==='telefone')document.getElementById('perfilTelefone').innerText=decrypted;
+      else if(key==='foto'){document.getElementById('perfilFoto').src=decrypted;}
+    }catch(e){console.error("Erro ao descriptografar",key,e);} }
+  }
+  if(hasProfileData)document.getElementById('perfil').classList.remove('hidden');
+  const imagensEnc=JSON.parse(localStorage.getItem('imagens')||"[]");
+  const container=document.getElementById("docContainer");
+  for(let im of imagensEnc){try{const decrypted=await decryptData(im.dataURL);criarBotaoVisualizar(container,im.nome,decrypted);}catch(e){console.error("Erro ao descriptografar imagem",im.nome,e);} }
+}
+</script>
+</body>
+</html>
